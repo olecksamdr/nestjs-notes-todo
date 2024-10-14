@@ -1,0 +1,28 @@
+services:
+  mongo:
+    image: mongo:8.0.1
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_DATABASE: notes
+    volumes:
+      - data:/data/db
+      # - ./db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js
+    ports:
+      - 27017:27017
+  app:
+    depends_on:
+      - mongo
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    restart: always
+    ports:
+      - 3000:3000
+    environment:
+      DATABASE_URI: mongodb://admin:admin@mongo:27017/notes?authSource=admin
+    volumes:
+      - ./:/app
+volumes:
+  data:
