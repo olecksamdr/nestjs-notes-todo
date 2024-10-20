@@ -20,7 +20,7 @@ variable ami_id {
 
 # Autoscaling Group
 
-variable vpc_zone_identifier {
+variable public_subnets {
   type = list
 }
 
@@ -31,7 +31,7 @@ variable autoscaling_gorup_max_size {
 
 variable autoscaling_gorup_min_size {
   type = number
-  default = 0
+  default = 1
 }
 
 variable autoscaling_gorup_desired_capacity {
