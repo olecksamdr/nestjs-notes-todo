@@ -15,7 +15,8 @@ jobs:
     - name: Build and Push the Docker image
       uses: mr-smithers-excellent/docker-build-push@v6
       with:
-        image: olecksandr/nestjs-notes-todo
-        registry: docker.io
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+        image: nestjs-notes-todo
+        registry: 857095442896.dkr.ecr.eu-central-1.amazonaws.com
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
