@@ -27,6 +27,7 @@ resource "aws_ecr_repository" "nestjs_notes_ecr_repo" {
 
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
+  version = "5.14.0"
 
   name = "terraform-vpc"
   cidr = "172.32.0.0/16"
