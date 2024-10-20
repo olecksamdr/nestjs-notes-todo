@@ -16,10 +16,6 @@ resource "aws_launch_template" "ecs_ec2" {
     associate_public_ip_address = true
   }
 
-  instance_market_options {
-    market_type = "spot"
-  }
-
   block_device_mappings {
     device_name = "/dev/sdf"
 
@@ -40,7 +36,7 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # Autoscaling Group
 resource "aws_autoscaling_group" "ecs" {
-  vpc_zone_identifier       = var.vpc_zone_identifier
+  vpc_zone_identifier       = var.public_subnets
   min_size                  = var.autoscaling_gorup_min_size
   max_size                  = var.autoscaling_gorup_max_size
   desired_capacity          = var.autoscaling_gorup_desired_capacity
@@ -140,6 +136,8 @@ resource "aws_ecs_task_definition" "app" {
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
   network_mode       = "awsvpc"
+  cpu                = 1024
+  memory             = 256
 
   container_definitions = jsonencode([{
     name         = "${var.name}-container",
@@ -180,10 +178,45 @@ resource "aws_security_group" "http_and_https" {
     }
   }
 
+  # ssh 
+  ingress {
+    protocol  = "tcp"
+    from_port = 22
+    to_port   = 22
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     protocol    = "-1"
     from_port   = 0
     to_port     = 0
     cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_ecs_service" "app" {
+  name            = "${var.name}-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = 1
+
+  network_configuration {
+    security_groups = [aws_security_group.http_and_https.id]
+    subnets         = var.public_subnets
+  }
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.main.name
+    base              = 1
+    weight            = 100
+  }
+
+  ordered_placement_strategy {
+    type  = "spread"
+    field = "attribute:ecs.availability-zone"
+  }
+
+  lifecycle {
+    ignore_changes = [desired_count]
   }
 }
