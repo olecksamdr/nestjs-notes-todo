@@ -25,6 +25,23 @@ resource "aws_ecr_repository" "nestjs_notes_ecr_repo" {
   name = "nestjs-notes-ecr-repo"
 }
 
+# Create IAM user which can push images to the ECR
+resource "aws_iam_user" "nestjs_notes_ecr_user" {
+  name = "nestjs_notes_ecr_user"
+
+  lifecycle {
+    ignore_changes = [
+      tags
+    ]
+  }
+}
+
+# Allow to manage ECR
+resource "aws_iam_user_policy_attachment" "container_registry_power_user" {
+  user       = aws_iam_user.nestjs_notes_ecr_user.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+}
+
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
   version = "5.14.0"
@@ -45,6 +62,10 @@ module "vpc" {
 }
 
 module "ecs" {
-  source           = "./terraform/modules/ecs"
-  ecs_cluster_name = "nestjs_notes_cluster"
+  source  = "./terraform/ecs"
+
+  name = "nestjs_notes_cluster"
+  vpc_id = module.vpc.default_vpc_id
+  vpc_zone_identifier = module.vpc.public_subnets
+  ecr_repository_url = aws_ecr_repository.nestjs_notes_ecr_repo.repository_url
 }
