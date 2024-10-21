@@ -10,14 +10,94 @@ resource "aws_key_pair" "ssh" {
   public_key = var.ssh_public_key
 }
 
-# Launch Template (describes EC2 instance)
-resource "aws_launch_template" "ecs_ec2" {
-  name_prefix   = var.name_prefix
-  image_id      = var.ami_id
-  instance_type = var.ec2_instance_type
-  key_name      = aws_key_pair.ssh.key_name
+# IAM Role & Security Group for ECS EC2 Node
+# Amazon ECS container instances, including both Amazon EC2
+# and external instances, run the Amazon ECS container agent
+# and require an IAM role for the service to know that the agent
+# belongs to you. Before you launch container instances and register
+# them to a cluster, you must create an IAM role for your container
+# instances to use.
+#
+# Amazon ECS provides the AmazonEC2ContainerServiceforEC2Role managed 
+# IAM policy which contains the permissions needed to use the full
+# Amazon ECS feature set. This managed policy can be attached
+#  to an IAM role and associated with your container instances. 
+# 
+# You can manually create the role and attach 
+# the managed IAM policy for container instances to allow
+# Amazon ECS to add permissions for future features and enhancements
+# as they are introduced
+#
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/instance_IAM_role.html
 
-  monitoring { enabled = true }
+data "aws_iam_policy_document" "ecs_node_doc" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    effect  = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ecs_node_role" {
+  name_prefix        = var.name
+  assume_role_policy = data.aws_iam_policy_document.ecs_node_doc.json
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_node_role_policy" {
+  role       = aws_iam_role.ecs_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_node" {
+  name_prefix = var.name
+  path        = "/ecs/instance/"
+  role        = aws_iam_role.ecs_node_role.name
+}
+
+resource "aws_security_group" "ssh" {
+  name_prefix = var.name
+  description = "Allow SSH connection"
+  vpc_id      = var.vpc_id
+
+  # ssh 
+  ingress {
+    protocol    = "tcp"
+    from_port   = 22
+    to_port     = 22
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Launch Template (describes EC2 instance)
+data "aws_ssm_parameter" "ecs_node_ami" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
+}
+
+resource "aws_launch_template" "ecs_ec2" {
+  name_prefix            = var.name_prefix
+  image_id               = data.aws_ssm_parameter.ecs_node_ami.value
+  instance_type          = var.ec2_instance_type
+  key_name               = aws_key_pair.ssh.key_name
+  vpc_security_group_ids = [aws_security_group.ssh]
+
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ecs_node.arn
+  }
+
+  monitoring {
+    enabled = true
+  }
 
   network_interfaces {
     associate_public_ip_address = true
@@ -168,12 +248,26 @@ resource "aws_ecs_task_definition" "app" {
     logConfiguration = {
       logDriver = "awslogs",
       options = {
-        "awslogs-region" = data.aws_region.current.name,
-        "awslogs-group"  = aws_cloudwatch_log_group.ecs.name,
+        "awslogs-region"        = data.aws_region.current.name,
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs.name,
+        "awslogs-stream-prefix" = "ecs"
       }
     },
   }])
 }
+
+# Create a security group
+# Container instances require external network access
+# to communicate with the Amazon ECS service endpoint.
+# 
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/get-set-up-for-amazon-ecs.html
+
+# You only need to configure the security group in the ECS service
+# network configuration and AWS will automatically attach that security group 
+# to the registered ECS optimized EC2 instance the ECS service task 
+# is running on.
+
+# https://stackoverflow.com/questions/76855816/how-do-aws-ecs-container-security-groups-work-on-ecs-optimized-ec2-instances
 
 resource "aws_security_group" "http_and_https" {
   name_prefix = "http-and-https-sg-"

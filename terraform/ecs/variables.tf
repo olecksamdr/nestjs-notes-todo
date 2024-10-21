@@ -18,11 +18,6 @@ variable "ec2_instance_type" {
   default = "t2.micro"
 }
 
-variable "ami_id" {
-  type    = string
-  default = "ami-08ec94f928cf25a9d" # Amazon linux 2023 64-bit (Arm)
-}
-
 # Autoscaling Group
 
 variable "public_subnets" {
