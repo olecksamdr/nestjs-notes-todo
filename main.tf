@@ -43,17 +43,17 @@ resource "aws_iam_user_policy_attachment" "container_registry_power_user" {
 }
 
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "5.14.0"
 
   name = "terraform-vpc"
   cidr = "172.32.0.0/16"
 
-  azs = ["eu-central-1a", "eu-central-1b", "eu-central-1c"]
-  public_subnets  = ["172.32.101.0/24", "172.32.102.0/24", "172.32.103.0/24"]
+  azs            = ["eu-central-1a", "eu-central-1b", "eu-central-1c"]
+  public_subnets = ["172.32.101.0/24", "172.32.102.0/24", "172.32.103.0/24"]
 
-  enable_nat_gateway = false
-  single_nat_gateway = false
+  enable_nat_gateway     = false
+  single_nat_gateway     = false
   one_nat_gateway_per_az = false
 
   tags = {
@@ -62,10 +62,10 @@ module "vpc" {
 }
 
 module "ecs" {
-  source  = "./terraform/ecs"
+  source = "./terraform/ecs"
 
-  name = "nestjs_notes_cluster"
-  vpc_id = module.vpc.vpc_id
-  public_subnets = module.vpc.public_subnets
+  name               = "nestjs_notes_cluster"
+  vpc_id             = module.vpc.vpc_id
+  public_subnets     = module.vpc.public_subnets
   ecr_repository_url = aws_ecr_repository.nestjs_notes_ecr_repo.repository_url
 }
