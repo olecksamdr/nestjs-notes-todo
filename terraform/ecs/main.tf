@@ -135,7 +135,7 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
 }
 
 resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "CloudWatch ${var.name}"
+  name              = "cloud-watch-${var.name}"
   retention_in_days = 1
 }
 
@@ -163,7 +163,6 @@ resource "aws_ecs_task_definition" "app" {
     essential    = true,
     portMappings = [{ containerPort = 80, hostPort = 80 }],
 
-    # TODO:
     logConfiguration = {
       logDriver = "awslogs",
       options = {
