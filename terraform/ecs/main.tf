@@ -139,6 +139,8 @@ resource "aws_cloudwatch_log_group" "ecs" {
   retention_in_days = 1
 }
 
+data "aws_region" "current" {}
+
 # ECS Task Definition
 # At this point, we simply describe from where
 # and how to launch the docker container.
@@ -166,7 +168,8 @@ resource "aws_ecs_task_definition" "app" {
     logConfiguration = {
       logDriver = "awslogs",
       options = {
-        "awslogs-group" = aws_cloudwatch_log_group.ecs.name,
+        "awslogs-region" = data.aws_region.current.name,
+        "awslogs-group"  = aws_cloudwatch_log_group.ecs.name,
       }
     },
   }])
