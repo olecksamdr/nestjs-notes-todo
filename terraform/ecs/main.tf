@@ -134,6 +134,11 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "CloudWatch ${var.name}"
+  retention_in_days = 1
+}
+
 # ECS Task Definition
 # At this point, we simply describe from where
 # and how to launch the docker container.
@@ -159,14 +164,12 @@ resource "aws_ecs_task_definition" "app" {
     portMappings = [{ containerPort = 80, hostPort = 80 }],
 
     # TODO:
-    # logConfiguration = {
-    #   logDriver = "awslogs",
-    #   options = {
-    #     "awslogs-region"        = "us-east-1",
-    #     "awslogs-group"         = aws_cloudwatch_log_group.ecs.name,
-    #     "awslogs-stream-prefix" = "app"
-    #   }
-    # },
+    logConfiguration = {
+      logDriver = "awslogs",
+      options = {
+        "awslogs-group" = aws_cloudwatch_log_group.ecs.name,
+      }
+    },
   }])
 }
 
