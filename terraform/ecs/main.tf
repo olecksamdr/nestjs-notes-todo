@@ -4,11 +4,18 @@ resource "aws_ecs_cluster" "main" {
   name = var.name
 }
 
+# Create a key pair to access ec2 instance by ssh
+resource "aws_key_pair" "ssh" {
+  key_name   = "ssh-ec2-access"
+  public_key = var.ssh_public_key
+}
+
 # Launch Template (describes EC2 instance)
 resource "aws_launch_template" "ecs_ec2" {
-  name_prefix            = var.name_prefix
-  image_id               = var.ami_id
-  instance_type          = var.ec2_instance_type
+  name_prefix   = var.name_prefix
+  image_id      = var.ami_id
+  instance_type = var.ec2_instance_type
+  key_name      = aws_key_pair.ssh.key_name
 
   monitoring { enabled = true }
 
@@ -36,11 +43,11 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # Autoscaling Group
 resource "aws_autoscaling_group" "ecs" {
-  vpc_zone_identifier       = var.public_subnets
-  min_size                  = var.autoscaling_gorup_min_size
-  max_size                  = var.autoscaling_gorup_max_size
-  desired_capacity          = var.autoscaling_gorup_desired_capacity
-  health_check_type         = "EC2"
+  vpc_zone_identifier = var.public_subnets
+  min_size            = var.autoscaling_gorup_min_size
+  max_size            = var.autoscaling_gorup_max_size
+  desired_capacity    = var.autoscaling_gorup_desired_capacity
+  health_check_type   = "EC2"
 
   launch_template {
     id      = aws_launch_template.ecs_ec2.id
@@ -140,8 +147,8 @@ resource "aws_ecs_task_definition" "app" {
   memory             = 256
 
   container_definitions = jsonencode([{
-    name         = "${var.name}-container",
-    image        = "${var.ecr_repository_url}:latest",
+    name  = "${var.name}-container",
+    image = "${var.ecr_repository_url}:latest",
     # If the essential parameter of a container is marked as true,
     # and that container fails or stops for any reason,
     # all other containers that are part of the task are stopped.
@@ -166,7 +173,7 @@ resource "aws_ecs_task_definition" "app" {
 resource "aws_security_group" "http_and_https" {
   name_prefix = "http-and-https-sg-"
   description = "Allow all HTTP/HTTPS traffic from public"
-  vpc_id      =  var.vpc_id
+  vpc_id      = var.vpc_id
 
   dynamic "ingress" {
     for_each = [80, 443]
@@ -180,9 +187,9 @@ resource "aws_security_group" "http_and_https" {
 
   # ssh 
   ingress {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
+    protocol    = "tcp"
+    from_port   = 22
+    to_port     = 22
     cidr_blocks = ["0.0.0.0/0"]
   }
 
