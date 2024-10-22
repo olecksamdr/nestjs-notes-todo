@@ -2,7 +2,7 @@
 
 #### Infrastructure
 
-![Infrastructure](/terraform/infrastructure.jpeg)
+![Infrastructure](/terraform/infrastructure.jpg)
 
 A tutorial on how to create a simple nestjs application, creating e2e endpoints and documenting the APIs
 
