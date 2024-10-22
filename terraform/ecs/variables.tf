@@ -1,6 +1,12 @@
 variable "ssh_public_key" {
-  type    = string
-  default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKbOiwa9YjatCr+NBJnIRQ6/rbF0u0RrZhQ7SxOYTUEU velsashok@gmail.com"
+  type      = string
+  sensitive = true
+  default   = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKbOiwa9YjatCr+NBJnIRQ6/rbF0u0RrZhQ7SxOYTUEU velsashok@gmail.com"
+}
+
+variable "DATABASE_URI" {
+  type      = string
+  sensitive = true
 }
 
 variable "name" {

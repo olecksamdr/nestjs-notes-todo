@@ -59,7 +59,7 @@ resource "aws_iam_instance_profile" "ecs_node" {
 }
 
 resource "aws_security_group" "ssh" {
-  name_prefix = var.name
+  name_prefix = "SSH ${var.name}"
   description = "Allow SSH connection"
   vpc_id      = var.vpc_id
 
@@ -85,11 +85,10 @@ data "aws_ssm_parameter" "ecs_node_ami" {
 }
 
 resource "aws_launch_template" "ecs_ec2" {
-  name_prefix            = var.name_prefix
-  image_id               = data.aws_ssm_parameter.ecs_node_ami.value
-  instance_type          = var.ec2_instance_type
-  key_name               = aws_key_pair.ssh.key_name
-  vpc_security_group_ids = [aws_security_group.ssh.id]
+  name_prefix   = var.name_prefix
+  image_id      = data.aws_ssm_parameter.ecs_node_ami.value
+  instance_type = var.ec2_instance_type
+  key_name      = aws_key_pair.ssh.key_name
 
   iam_instance_profile {
     arn = aws_iam_instance_profile.ecs_node.arn
@@ -101,6 +100,7 @@ resource "aws_launch_template" "ecs_ec2" {
 
   network_interfaces {
     associate_public_ip_address = true
+    security_groups             = [aws_security_group.ssh.id]
   }
 
   block_device_mappings {
@@ -184,6 +184,22 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
   }
 }
 
+# Retrieve Secrets Manager secrets through Amazon ECS environment variables
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html
+
+resource "aws_secretsmanager_secret" "db_url" {
+  name        = "DATABASE_URL"
+  description = "DATABASE_URL for ${var.name}"
+  # set the recovery window to 0 for immediate deletion of secrets after calling terraform destroy
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "db_url" {
+  secret_id     = aws_secretsmanager_secret.db_url.id
+  secret_string = var.DATABASE_URI
+}
+
+
 # IAM Role for ECS Task
 # Roles required to have access ECR, Cloud Watch
 
@@ -199,6 +215,23 @@ data "aws_iam_policy_document" "ecs_task_doc" {
   }
 }
 
+data "aws_iam_policy_document" "ecs_task_secrets_policy_doc" {
+  version = "2012-10-17"
+  # Your task definition must use a task execution role with the additional permissions for Secrets Manager.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.db_url.arn]
+  }
+}
+
+resource "aws_iam_policy" "get_secret_value" {
+  name        = "GetSecretValue-policy"
+  description = "A test policy"
+  policy      = data.aws_iam_policy_document.ecs_task_secrets_policy_doc.json
+}
+
 resource "aws_iam_role" "ecs_task_role" {
   name_prefix        = "${var.name}-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
@@ -210,8 +243,12 @@ resource "aws_iam_role" "ecs_exec_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
+  for_each = tomap({
+    get_secret = aws_iam_policy.get_secret_value.arn,
+    task_exec = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  })
   role       = aws_iam_role.ecs_exec_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  policy_arn = each.value
 }
 
 resource "aws_cloudwatch_log_group" "ecs" {
@@ -244,6 +281,11 @@ resource "aws_ecs_task_definition" "app" {
     # If this parameter is omitted, a container is assumed to be essential.
     essential    = true,
     portMappings = [{ containerPort = 80, hostPort = 80 }],
+
+    secrets = [{
+      name      = aws_secretsmanager_secret.db_url.name
+      valueFrom = aws_secretsmanager_secret_version.db_url.arn
+    }]
 
     logConfiguration = {
       logDriver = "awslogs",

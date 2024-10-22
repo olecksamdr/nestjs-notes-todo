@@ -29,6 +29,14 @@ PORT = 80
 
 `http://localhost:3000/api/`
 
+### Terraform
+
+> set DATABASE_URI durring apply
+
+```sh
+  terraform apply -var "DATABASE_URI=databse.url"
+```
+
 ### Blog Posts
 
 -    On how to create API endpoints: https://techshrimps.hashnode.dev/get-started-with-nestjs-and-create-a-todo-notes-app-ck9pni8xv02sohjs1f66yuqm5

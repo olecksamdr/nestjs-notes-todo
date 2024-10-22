@@ -68,4 +68,5 @@ module "ecs" {
   vpc_id             = module.vpc.vpc_id
   public_subnets     = module.vpc.public_subnets
   ecr_repository_url = aws_ecr_repository.nestjs_notes_ecr_repo.repository_url
+  DATABASE_URI       = var.DATABASE_URI
 }
