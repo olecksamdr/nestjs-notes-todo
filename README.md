@@ -25,6 +25,10 @@ PORT = 80
 -    `git clone`
 -    `docker-compose up`
 
+### API Docs
+
+`http://localhost:3000/api/`
+
 ### Blog Posts
 
 -    On how to create API endpoints: https://techshrimps.hashnode.dev/get-started-with-nestjs-and-create-a-todo-notes-app-ck9pni8xv02sohjs1f66yuqm5
