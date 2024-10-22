@@ -2,7 +2,7 @@
 
 #### Infrastructure
 
-![Infrastructure](/terraform/infrastructure.jpeg)
+![Infrastructure](/terraform/infrastructure.jpg)
 
 A tutorial on how to create a simple nestjs application, creating e2e endpoints and documenting the APIs
 
@@ -24,6 +24,18 @@ PORT = 80
 
 -    `git clone`
 -    `docker-compose up`
+
+### API Docs
+
+`http://localhost:3000/api/`
+
+### Terraform
+
+> set DATABASE_URI durring apply
+
+```sh
+  terraform apply -var "DATABASE_URI=databse.url"
+```
 
 ### Blog Posts
 

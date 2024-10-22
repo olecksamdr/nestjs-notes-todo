@@ -4,16 +4,103 @@ resource "aws_ecs_cluster" "main" {
   name = var.name
 }
 
-# Launch Template (describes EC2 instance)
-resource "aws_launch_template" "ecs_ec2" {
-  name_prefix            = var.name_prefix
-  image_id               = var.ami_id
-  instance_type          = var.ec2_instance_type
+# Create a key pair to access ec2 instance by ssh
+resource "aws_key_pair" "ssh" {
+  key_name   = "ssh-ec2-access"
+  public_key = var.ssh_public_key
+}
 
-  monitoring { enabled = true }
+# IAM Role & Security Group for ECS EC2 Node
+# Amazon ECS container instances, including both Amazon EC2
+# and external instances, run the Amazon ECS container agent
+# and require an IAM role for the service to know that the agent
+# belongs to you. Before you launch container instances and register
+# them to a cluster, you must create an IAM role for your container
+# instances to use.
+#
+# Amazon ECS provides the AmazonEC2ContainerServiceforEC2Role managed 
+# IAM policy which contains the permissions needed to use the full
+# Amazon ECS feature set. This managed policy can be attached
+#  to an IAM role and associated with your container instances. 
+# 
+# You can manually create the role and attach 
+# the managed IAM policy for container instances to allow
+# Amazon ECS to add permissions for future features and enhancements
+# as they are introduced
+#
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/instance_IAM_role.html
+
+data "aws_iam_policy_document" "ecs_node_doc" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    effect  = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ecs_node_role" {
+  name_prefix        = var.name
+  assume_role_policy = data.aws_iam_policy_document.ecs_node_doc.json
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_node_role_policy" {
+  role       = aws_iam_role.ecs_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_node" {
+  name_prefix = var.name
+  path        = "/ecs/instance/"
+  role        = aws_iam_role.ecs_node_role.name
+}
+
+resource "aws_security_group" "ssh" {
+  name_prefix = "SSH ${var.name}"
+  description = "Allow SSH connection"
+  vpc_id      = var.vpc_id
+
+  # ssh 
+  ingress {
+    protocol    = "tcp"
+    from_port   = 22
+    to_port     = 22
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Launch Template (describes EC2 instance)
+data "aws_ssm_parameter" "ecs_node_ami" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
+}
+
+resource "aws_launch_template" "ecs_ec2" {
+  name_prefix   = var.name_prefix
+  image_id      = data.aws_ssm_parameter.ecs_node_ami.value
+  instance_type = var.ec2_instance_type
+  key_name      = aws_key_pair.ssh.key_name
+
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ecs_node.arn
+  }
+
+  monitoring {
+    enabled = true
+  }
 
   network_interfaces {
     associate_public_ip_address = true
+    security_groups             = [aws_security_group.ssh.id]
   }
 
   block_device_mappings {
@@ -36,11 +123,11 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # Autoscaling Group
 resource "aws_autoscaling_group" "ecs" {
-  vpc_zone_identifier       = var.public_subnets
-  min_size                  = var.autoscaling_gorup_min_size
-  max_size                  = var.autoscaling_gorup_max_size
-  desired_capacity          = var.autoscaling_gorup_desired_capacity
-  health_check_type         = "EC2"
+  vpc_zone_identifier = var.public_subnets
+  min_size            = var.autoscaling_gorup_min_size
+  max_size            = var.autoscaling_gorup_max_size
+  desired_capacity    = var.autoscaling_gorup_desired_capacity
+  health_check_type   = "EC2"
 
   launch_template {
     id      = aws_launch_template.ecs_ec2.id
@@ -97,6 +184,22 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
   }
 }
 
+# Retrieve Secrets Manager secrets through Amazon ECS environment variables
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html
+
+resource "aws_secretsmanager_secret" "db_url" {
+  name        = "DATABASE_URL"
+  description = "DATABASE_URL for ${var.name}"
+  # set the recovery window to 0 for immediate deletion of secrets after calling terraform destroy
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "db_url" {
+  secret_id     = aws_secretsmanager_secret.db_url.id
+  secret_string = var.DATABASE_URI
+}
+
+
 # IAM Role for ECS Task
 # Roles required to have access ECR, Cloud Watch
 
@@ -112,6 +215,23 @@ data "aws_iam_policy_document" "ecs_task_doc" {
   }
 }
 
+data "aws_iam_policy_document" "ecs_task_secrets_policy_doc" {
+  version = "2012-10-17"
+  # Your task definition must use a task execution role with the additional permissions for Secrets Manager.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.db_url.arn]
+  }
+}
+
+resource "aws_iam_policy" "get_secret_value" {
+  name        = "GetSecretValue-policy"
+  description = "A test policy"
+  policy      = data.aws_iam_policy_document.ecs_task_secrets_policy_doc.json
+}
+
 resource "aws_iam_role" "ecs_task_role" {
   name_prefix        = "${var.name}-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
@@ -123,9 +243,20 @@ resource "aws_iam_role" "ecs_exec_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
+  for_each = tomap({
+    get_secret = aws_iam_policy.get_secret_value.arn,
+    task_exec = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  })
   role       = aws_iam_role.ecs_exec_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  policy_arn = each.value
 }
+
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "cloud-watch-${var.name}"
+  retention_in_days = 1
+}
+
+data "aws_region" "current" {}
 
 # ECS Task Definition
 # At this point, we simply describe from where
@@ -140,8 +271,8 @@ resource "aws_ecs_task_definition" "app" {
   memory             = 256
 
   container_definitions = jsonencode([{
-    name         = "${var.name}-container",
-    image        = "${var.ecr_repository_url}:latest",
+    name  = "${var.name}-container",
+    image = "${var.ecr_repository_url}:latest",
     # If the essential parameter of a container is marked as true,
     # and that container fails or stops for any reason,
     # all other containers that are part of the task are stopped.
@@ -151,22 +282,39 @@ resource "aws_ecs_task_definition" "app" {
     essential    = true,
     portMappings = [{ containerPort = 80, hostPort = 80 }],
 
-    # TODO:
-    # logConfiguration = {
-    #   logDriver = "awslogs",
-    #   options = {
-    #     "awslogs-region"        = "us-east-1",
-    #     "awslogs-group"         = aws_cloudwatch_log_group.ecs.name,
-    #     "awslogs-stream-prefix" = "app"
-    #   }
-    # },
+    secrets = [{
+      name      = aws_secretsmanager_secret.db_url.name
+      valueFrom = aws_secretsmanager_secret_version.db_url.arn
+    }]
+
+    logConfiguration = {
+      logDriver = "awslogs",
+      options = {
+        "awslogs-region"        = data.aws_region.current.name,
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs.name,
+        "awslogs-stream-prefix" = "ecs"
+      }
+    },
   }])
 }
+
+# Create a security group
+# Container instances require external network access
+# to communicate with the Amazon ECS service endpoint.
+# 
+# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/get-set-up-for-amazon-ecs.html
+
+# You only need to configure the security group in the ECS service
+# network configuration and AWS will automatically attach that security group 
+# to the registered ECS optimized EC2 instance the ECS service task 
+# is running on.
+
+# https://stackoverflow.com/questions/76855816/how-do-aws-ecs-container-security-groups-work-on-ecs-optimized-ec2-instances
 
 resource "aws_security_group" "http_and_https" {
   name_prefix = "http-and-https-sg-"
   description = "Allow all HTTP/HTTPS traffic from public"
-  vpc_id      =  var.vpc_id
+  vpc_id      = var.vpc_id
 
   dynamic "ingress" {
     for_each = [80, 443]
@@ -180,9 +328,9 @@ resource "aws_security_group" "http_and_https" {
 
   # ssh 
   ingress {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
+    protocol    = "tcp"
+    from_port   = 22
+    to_port     = 22
     cidr_blocks = ["0.0.0.0/0"]
   }
 
