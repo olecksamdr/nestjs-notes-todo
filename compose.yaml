@@ -21,7 +21,7 @@ services:
       - 3000:80
     environment:
       PORT: 80
-      DATABASE_URI: mongodb://admin:admin@mongo:27017/notes?authSource=admin
+      DATABASE_URL: mongodb://admin:admin@mongo:27017/notes?authSource=admin
     volumes:
       - ./:/app
 volumes:

@@ -7,7 +7,7 @@ import "dotenv/config";
 
 @Module({
   imports: [
-    MongooseModule.forRoot(process.env.DATABASE_URI,
+    MongooseModule.forRoot(process.env.DATABASE_URL,
       {
         useNewUrlParser: true,
         useUnifiedTopology: true,

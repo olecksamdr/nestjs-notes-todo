@@ -9,7 +9,7 @@ A tutorial on how to create a simple nestjs application, creating e2e endpoints 
 .env variable
 
 ```
-DATABASE_URI =
+DATABASE_URL =
 PORT = 80
 ```
 
@@ -31,10 +31,10 @@ PORT = 80
 
 ### Terraform
 
-> set DATABASE_URI durring apply
+> set DATABASE_URL durring apply
 
 ```sh
-  terraform apply -var "DATABASE_URI=databse.url"
+  terraform apply -var "DATABASE_URL=databse.url"
 ```
 
 ### Blog Posts
