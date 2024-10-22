@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import * as dotenv from "dotenv";
@@ -26,5 +27,10 @@ async function bootstrap() {
   });
   SwaggerModule.setup("api", app, appDocument);
   await app.listen(PORT);
+
+  const logger = new Logger('bootstrap');
+
+  logger.log(`Listening on ${await app.getUrl()}`);
+  logger.log(`DATABASE_URL=${process.env.DATABASE_URL}`);
 }
 bootstrap();
