@@ -79,6 +79,29 @@ resource "aws_security_group" "ssh" {
   }
 }
 
+resource "aws_security_group" "http_and_https" {
+  name_prefix = "http-and-https-sg-"
+  description = "Allow all HTTP/HTTPS traffic from public"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = [80, 443]
+    content {
+      protocol    = "tcp"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 # Launch Template (describes EC2 instance)
 data "aws_ssm_parameter" "ecs_node_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
@@ -100,7 +123,10 @@ resource "aws_launch_template" "ecs_ec2" {
 
   network_interfaces {
     associate_public_ip_address = true
-    security_groups             = [aws_security_group.ssh.id]
+    security_groups = [
+      aws_security_group.ssh.id,
+      aws_security_group.http_and_https.id
+    ]
   }
 
   block_device_mappings {
@@ -328,37 +354,6 @@ resource "aws_ecs_task_definition" "app" {
 # is running on.
 
 # https://stackoverflow.com/questions/76855816/how-do-aws-ecs-container-security-groups-work-on-ecs-optimized-ec2-instances
-
-resource "aws_security_group" "http_and_https" {
-  name_prefix = "http-and-https-sg-"
-  description = "Allow all HTTP/HTTPS traffic from public"
-  vpc_id      = var.vpc_id
-
-  dynamic "ingress" {
-    for_each = [80, 443]
-    content {
-      protocol    = "tcp"
-      from_port   = ingress.value
-      to_port     = ingress.value
-      cidr_blocks = ["0.0.0.0/0"]
-    }
-  }
-
-  # ssh 
-  ingress {
-    protocol    = "tcp"
-    from_port   = 22
-    to_port     = 22
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    protocol    = "-1"
-    from_port   = 0
-    to_port     = 0
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
 
 resource "aws_ecs_service" "app" {
   name            = "${var.name}-service"
