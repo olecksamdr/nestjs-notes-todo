@@ -79,6 +79,29 @@ resource "aws_security_group" "ssh" {
   }
 }
 
+resource "aws_security_group" "http_and_https" {
+  name_prefix = "http-and-https-sg-"
+  description = "Allow all HTTP/HTTPS traffic from public"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = [80, 443]
+    content {
+      protocol    = "tcp"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 # Launch Template (describes EC2 instance)
 data "aws_ssm_parameter" "ecs_node_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
@@ -100,7 +123,10 @@ resource "aws_launch_template" "ecs_ec2" {
 
   network_interfaces {
     associate_public_ip_address = true
-    security_groups             = [aws_security_group.ssh.id]
+    security_groups = [
+      aws_security_group.ssh.id,
+      aws_security_group.http_and_https.id
+    ]
   }
 
   block_device_mappings {
@@ -245,7 +271,7 @@ resource "aws_iam_role" "ecs_exec_role" {
 resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
   for_each = tomap({
     get_secret = aws_iam_policy.get_secret_value.arn,
-    task_exec = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+    task_exec  = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
   })
   role       = aws_iam_role.ecs_exec_role.name
   policy_arn = each.value
@@ -266,9 +292,24 @@ resource "aws_ecs_task_definition" "app" {
   family             = var.name
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
-  network_mode       = "awsvpc"
-  cpu                = 1024
-  memory             = 256
+
+  # Amazon EC2 — You can launch EC2 instances on a public subnet.
+  # Amazon ECS uses these EC2 instances as cluster capacity,
+  # and any containers that are running on the instances can use
+  # the underlying public IP address of the host for outbound networking.
+  # This applies to both the *host* and *bridge* network modes.
+  # 
+  # However, the *awsvpc* network mode doesn't provide task ENIs with public IP addresses.
+  # Therefore, they can’t make direct use of an internet gateway.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-outbound.html
+
+  # With bridge mode, you're using a virtual network bridge to create a layer between the host
+  # and the networking of the container.
+  # This way, you can create port mappings that remap a host port to a container port.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-networkmode-bridge.html
+  network_mode = "bridge"
+  cpu          = 1024
+  memory       = 256
 
   container_definitions = jsonencode([{
     name  = "${var.name}-container",
@@ -279,8 +320,11 @@ resource "aws_ecs_task_definition" "app" {
     # If the essential parameter of a container is marked as false,
     # its failure doesn't affect the rest of the containers in a task.
     # If this parameter is omitted, a container is assumed to be essential.
-    essential    = true,
-    portMappings = [{ containerPort = 80, hostPort = 80 }],
+    essential = true,
+    portMappings = [{
+      hostPort      = 80,
+      containerPort = 3000,
+    }],
 
     secrets = [{
       name      = aws_secretsmanager_secret.db_url.name
@@ -311,47 +355,23 @@ resource "aws_ecs_task_definition" "app" {
 
 # https://stackoverflow.com/questions/76855816/how-do-aws-ecs-container-security-groups-work-on-ecs-optimized-ec2-instances
 
-resource "aws_security_group" "http_and_https" {
-  name_prefix = "http-and-https-sg-"
-  description = "Allow all HTTP/HTTPS traffic from public"
-  vpc_id      = var.vpc_id
-
-  dynamic "ingress" {
-    for_each = [80, 443]
-    content {
-      protocol    = "tcp"
-      from_port   = ingress.value
-      to_port     = ingress.value
-      cidr_blocks = ["0.0.0.0/0"]
-    }
-  }
-
-  # ssh 
-  ingress {
-    protocol    = "tcp"
-    from_port   = 22
-    to_port     = 22
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    protocol    = "-1"
-    from_port   = 0
-    to_port     = 0
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
 resource "aws_ecs_service" "app" {
   name            = "${var.name}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
 
-  network_configuration {
-    security_groups = [aws_security_group.http_and_https.id]
-    subnets         = var.public_subnets
-  }
+  # network_configuration - (Optional)
+  # Network configuration for the service.
+  # This parameter is required for task definitions that use the awsvpc network mode
+  # to receive their own Elastic Network Interface, and it is not supported for other network modes.
+  # 
+  # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_service.html#network_configuration
+  #
+  # network_configuration {
+  #   security_groups = [aws_security_group.http_and_https.id]
+  #   subnets         = var.public_subnets
+  # }
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.main.name
