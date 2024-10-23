@@ -245,7 +245,7 @@ resource "aws_iam_role" "ecs_exec_role" {
 resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
   for_each = tomap({
     get_secret = aws_iam_policy.get_secret_value.arn,
-    task_exec = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+    task_exec  = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
   })
   role       = aws_iam_role.ecs_exec_role.name
   policy_arn = each.value
@@ -266,9 +266,24 @@ resource "aws_ecs_task_definition" "app" {
   family             = var.name
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
-  network_mode       = "awsvpc"
-  cpu                = 1024
-  memory             = 256
+
+  # Amazon EC2 — You can launch EC2 instances on a public subnet.
+  # Amazon ECS uses these EC2 instances as cluster capacity,
+  # and any containers that are running on the instances can use
+  # the underlying public IP address of the host for outbound networking.
+  # This applies to both the *host* and *bridge* network modes.
+  # 
+  # However, the *awsvpc* network mode doesn't provide task ENIs with public IP addresses.
+  # Therefore, they can’t make direct use of an internet gateway.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-outbound.html
+
+  # With bridge mode, you're using a virtual network bridge to create a layer between the host
+  # and the networking of the container.
+  # This way, you can create port mappings that remap a host port to a container port.
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-networkmode-bridge.html
+  network_mode = "bridge"
+  cpu          = 1024
+  memory       = 256
 
   container_definitions = jsonencode([{
     name  = "${var.name}-container",
@@ -279,8 +294,12 @@ resource "aws_ecs_task_definition" "app" {
     # If the essential parameter of a container is marked as false,
     # its failure doesn't affect the rest of the containers in a task.
     # If this parameter is omitted, a container is assumed to be essential.
-    essential    = true,
-    portMappings = [{ containerPort = 80, hostPort = 80 }],
+    essential = true,
+    portMappings = [{
+      hostPort      = 80,
+      containerPort = 3000,
+      # protocol      = "tcp"
+    }],
 
     secrets = [{
       name      = aws_secretsmanager_secret.db_url.name
@@ -348,10 +367,17 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
 
-  network_configuration {
-    security_groups = [aws_security_group.http_and_https.id]
-    subnets         = var.public_subnets
-  }
+  # network_configuration - (Optional)
+  # Network configuration for the service.
+  # This parameter is required for task definitions that use the awsvpc network mode
+  # to receive their own Elastic Network Interface, and it is not supported for other network modes.
+  # 
+  # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_service.html#network_configuration
+  #
+  # network_configuration {
+  #   security_groups = [aws_security_group.http_and_https.id]
+  #   subnets         = var.public_subnets
+  # }
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.main.name
