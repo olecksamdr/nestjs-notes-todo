@@ -31,6 +31,5 @@ async function bootstrap() {
   const logger = new Logger('bootstrap');
 
   logger.log(`Listening on ${await app.getUrl()}`);
-  logger.log(`DATABASE_URL=${process.env.DATABASE_URL}`);
 }
 bootstrap();

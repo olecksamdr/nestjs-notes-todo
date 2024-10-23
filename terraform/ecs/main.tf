@@ -298,7 +298,6 @@ resource "aws_ecs_task_definition" "app" {
     portMappings = [{
       hostPort      = 80,
       containerPort = 3000,
-      # protocol      = "tcp"
     }],
 
     secrets = [{
