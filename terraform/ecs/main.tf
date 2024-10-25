@@ -276,7 +276,7 @@ data "aws_iam_policy_document" "ecs_task_secrets_policy_doc" {
 
 resource "aws_iam_policy" "get_secret_value" {
   name        = "GetSecretValue-policy"
-  description = "A test policy"
+  description = "Allow to get a value from Secrets Manager"
   policy      = data.aws_iam_policy_document.ecs_task_secrets_policy_doc.json
 }
 
@@ -558,9 +558,5 @@ resource "aws_ecs_service" "app" {
   ordered_placement_strategy {
     type  = "spread"
     field = "attribute:ecs.availability-zone"
-  }
-
-  lifecycle {
-    ignore_changes = [desired_count]
   }
 }

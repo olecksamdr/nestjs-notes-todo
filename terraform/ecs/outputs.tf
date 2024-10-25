@@ -5,3 +5,7 @@ output "alb_dns_name" {
 output "alb_zone_id" {
   value = aws_lb.main.zone_id
 }
+
+output "ecs_service_id" {
+  value = aws_ecs_service.app.id
+}

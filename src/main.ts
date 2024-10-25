@@ -31,5 +31,6 @@ async function bootstrap() {
   const logger = new Logger('bootstrap');
 
   logger.log(`Listening on ${await app.getUrl()}`);
+  logger.log(`Log to test autodeploy`);
 }
 bootstrap();
