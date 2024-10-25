@@ -64,7 +64,7 @@ module "vpc" {
 module "ecs" {
   source = "./terraform/ecs"
 
-  name               = "nestjs_notes_cluster"
+  name               = "nestjs-notes-cluster"
   vpc_id             = module.vpc.vpc_id
   public_subnets     = module.vpc.public_subnets
   ecr_repository_url = aws_ecr_repository.nestjs_notes_ecr_repo.repository_url

@@ -133,7 +133,6 @@ resource "aws_launch_template" "ecs_ec2" {
     device_name = "/dev/sdf"
 
     ebs {
-      # TODO: move to the variable
       volume_size = 8
     }
   }
@@ -288,6 +287,11 @@ data "aws_region" "current" {}
 # At this point, we simply describe from where
 # and how to launch the docker container.
 
+locals {
+  container_name = "${var.name}-container"
+  container_port = 80
+}
+
 resource "aws_ecs_task_definition" "app" {
   family             = var.name
   task_role_arn      = aws_iam_role.ecs_task_role.arn
@@ -312,7 +316,7 @@ resource "aws_ecs_task_definition" "app" {
   memory       = 256
 
   container_definitions = jsonencode([{
-    name  = "${var.name}-container",
+    name  = local.container_name,
     image = "${var.ecr_repository_url}:latest",
     # If the essential parameter of a container is marked as true,
     # and that container fails or stops for any reason,
@@ -321,9 +325,15 @@ resource "aws_ecs_task_definition" "app" {
     # its failure doesn't affect the rest of the containers in a task.
     # If this parameter is omitted, a container is assumed to be essential.
     essential = true,
+
+    environment = [{
+      name  = "PORT"
+      value = "80"
+    }]
+
     portMappings = [{
       hostPort      = 80,
-      containerPort = 3000,
+      containerPort = local.container_port,
     }],
 
     secrets = [{
@@ -340,6 +350,50 @@ resource "aws_ecs_task_definition" "app" {
       }
     },
   }])
+}
+
+# Load Balancer (ALB)
+
+resource "aws_lb" "main" {
+  name               = "alb-for-${var.name}"
+  load_balancer_type = "application"
+  subnets            = var.public_subnets
+  security_groups    = [aws_security_group.http_and_https.id]
+
+  tags = {
+    Name = "alb-for=${var.name}"
+  }
+}
+
+resource "aws_lb_target_group" "app" {
+  name_prefix   = substr(var.name, 1, 6)
+  vpc_id = var.vpc_id
+  # TODO https and redirect from http to https
+  protocol = "HTTP"
+  port     = 80
+  target_type = "instance"
+
+  health_check {
+    enabled = true
+    path    = "/api/v1/note/all"
+    port    = 80
+    matcher = 200
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
 }
 
 # Create a security group
@@ -361,17 +415,26 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
 
+
+  depends_on = [aws_lb_target_group.app]
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app.arn
+    container_name   = local.container_name
+    container_port = local.container_port
+  }
+
   # network_configuration - (Optional)
   # Network configuration for the service.
   # This parameter is required for task definitions that use the awsvpc network mode
   # to receive their own Elastic Network Interface, and it is not supported for other network modes.
   # 
   # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_service.html#network_configuration
-  #
-  # network_configuration {
-  #   security_groups = [aws_security_group.http_and_https.id]
-  #   subnets         = var.public_subnets
-  # }
+
+  network_configuration {
+    security_groups = [aws_security_group.http_and_https.id]
+    subnets         = var.public_subnets
+  }
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.main.name
