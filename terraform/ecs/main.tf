@@ -366,11 +366,11 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "app" {
-  name_prefix   = substr(var.name, 1, 6)
-  vpc_id = var.vpc_id
+  name_prefix = substr(var.name, 1, 6)
+  vpc_id      = var.vpc_id
   # TODO https and redirect from http to https
-  protocol = "HTTP"
-  port     = 80
+  protocol    = "HTTP"
+  port        = 80
   target_type = "instance"
 
   health_check {
@@ -421,7 +421,7 @@ resource "aws_ecs_service" "app" {
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = local.container_name
-    container_port = local.container_port
+    container_port   = local.container_port
   }
 
   # network_configuration - (Optional)
