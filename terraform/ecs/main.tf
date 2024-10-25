@@ -102,6 +102,30 @@ resource "aws_security_group" "http_and_https" {
   }
 }
 
+resource "aws_security_group" "http_from_alb" {
+  name_prefix = "http-from-alb"
+  description = "Allow all HTTP traffic from ALB"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    protocol        = "tcp"
+    from_port       = 80
+    to_port         = 80
+    security_groups = [aws_security_group.http_and_https_alb.id]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "HTTP from ALB"
+  }
+}
+
 # Launch Template (describes EC2 instance)
 data "aws_ssm_parameter" "ecs_node_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
@@ -124,8 +148,7 @@ resource "aws_launch_template" "ecs_ec2" {
   network_interfaces {
     associate_public_ip_address = true
     security_groups = [
-      aws_security_group.ssh.id,
-      aws_security_group.http_and_https.id
+      aws_security_group.http_from_alb.id
     ]
   }
 
@@ -354,11 +377,34 @@ resource "aws_ecs_task_definition" "app" {
 
 # Load Balancer (ALB)
 
+resource "aws_security_group" "http_and_https_alb" {
+  name_prefix = "http-and-https-alb-"
+  description = "Allow all HTTP/HTTPS traffic to ALB from public"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = [80, 443]
+    content {
+      protocol    = "tcp"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 resource "aws_lb" "main" {
   name               = "alb-for-${var.name}"
   load_balancer_type = "application"
   subnets            = var.public_subnets
-  security_groups    = [aws_security_group.http_and_https.id]
+  security_groups    = [aws_security_group.http_and_https_alb.id]
 
   tags = {
     Name = "alb-for=${var.name}"
