@@ -17,8 +17,12 @@ provider "aws" {
 # it represents a collection of records
 # that can be managed together, belonging to a single parent domain name
 
+locals {
+  domain_name = "nestjs-notes.online"
+}
+
 resource "aws_route53_zone" "primary" {
-  name = "nestjs-notes.online"
+  name = local.domain_name
 }
 
 # Create a ECR Container Registry
@@ -67,6 +71,8 @@ module "ecs" {
 
   name               = "nestjs-notes-cluster"
   vpc_id             = module.vpc.vpc_id
+  route53_zone_id    = aws_route53_zone.primary.zone_id
+  domain_name        = local.domain_name
   public_subnets     = module.vpc.public_subnets
   ecr_repository_url = aws_ecr_repository.nestjs_notes_ecr_repo.repository_url
   DATABASE_URI       = var.DATABASE_URI
@@ -83,6 +89,6 @@ resource "aws_route53_record" "alb_record" {
   alias {
     name                   = module.ecs.alb_dns_name
     zone_id                = module.ecs.alb_zone_id
-    evaluate_target_health = true
+    evaluate_target_health = false
   }
 }
