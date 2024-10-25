@@ -25,6 +25,21 @@ resource "aws_route53_zone" "primary" {
   name = local.domain_name
 }
 
+resource "aws_route53_record" "www" {
+  zone_id = aws_route53_zone.primary.zone_id
+  # If you're creating a record that has the same name as the hosted zone,
+  # don't enter a value (for example, an @ symbol) in the Name field.
+  # https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-basic.html#rrsets-values-basic-name
+  name = "www"
+  type = "A"
+
+  alias {
+    name                   = local.domain_name
+    zone_id                = aws_route53_zone.primary.zone_id
+    evaluate_target_health = false
+  }
+}
+
 # Create a ECR Container Registry
 resource "aws_ecr_repository" "nestjs_notes_ecr_repo" {
   name = "nestjs-notes-ecr-repo"
