@@ -47,7 +47,7 @@ resource "aws_ecr_repository" "nestjs_notes_ecr_repo" {
 
 # Create IAM user which can push images to the ECR
 resource "aws_iam_user" "nestjs_notes_ecr_user" {
-  name = "nestjs_notes_ecr_user"
+  name = "nestjs_notes_github_actions_user"
 
   lifecycle {
     ignore_changes = [
@@ -58,8 +58,13 @@ resource "aws_iam_user" "nestjs_notes_ecr_user" {
 
 # Allow to manage ECR
 resource "aws_iam_user_policy_attachment" "container_registry_power_user" {
+  for_each = tomap({
+    push_image = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser",
+    update_ecs = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+  })
+
   user       = aws_iam_user.nestjs_notes_ecr_user.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+  policy_arn = each.value
 }
 
 module "vpc" {
