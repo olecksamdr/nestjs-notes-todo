@@ -23,3 +23,9 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         DATABASE_URL: ${{ secrets.DATABASE_URI }}
+    - name: Trigger Deploy of ECS Service
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: 'eu-central-1'
+      run: aws ecs update-service --cluster nestjs-notes-cluster --service nestjs-notes-cluster-service --force-new-deployment
