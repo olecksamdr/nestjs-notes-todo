@@ -56,11 +56,29 @@ resource "aws_iam_user" "nestjs_notes_ecr_user" {
   }
 }
 
-# Allow to manage ECR
+# Allow to manage ECR and update ECS Service
+
+data "aws_iam_policy_document" "update_ecs_service_doc" {
+  statement {
+    effect = "Allow"
+    actions = ["ecs:UpdateService"]
+    resources = [
+      module.ecs.ecs_service_id
+    ]
+  }
+}
+
+resource "aws_iam_policy" "update_ecs_service" {
+  name        = "UpdateEcsService"
+  description = "Allow to update an ECS Servcie"
+  policy      = data.aws_iam_policy_document.update_ecs_service_doc.json
+}
+
+
 resource "aws_iam_user_policy_attachment" "container_registry_power_user" {
   for_each = tomap({
     push_image = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser",
-    update_ecs = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+    update_ecs = aws_iam_policy.update_ecs_service.arn
   })
 
   user       = aws_iam_user.nestjs_notes_ecr_user.name
