@@ -16,8 +16,28 @@ provider "aws" {
 # Create an AWS Route53 hosted zone
 # it represents a collection of records
 # that can be managed together, belonging to a single parent domain name
+
+locals {
+  domain_name = "nestjs-notes.online"
+}
+
 resource "aws_route53_zone" "primary" {
-  name = "nestjs-notes.online"
+  name = local.domain_name
+}
+
+resource "aws_route53_record" "www" {
+  zone_id = aws_route53_zone.primary.zone_id
+  # If you're creating a record that has the same name as the hosted zone,
+  # don't enter a value (for example, an @ symbol) in the Name field.
+  # https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-basic.html#rrsets-values-basic-name
+  name = "www"
+  type = "A"
+
+  alias {
+    name                   = local.domain_name
+    zone_id                = aws_route53_zone.primary.zone_id
+    evaluate_target_health = false
+  }
 }
 
 # Create a ECR Container Registry
@@ -64,9 +84,26 @@ module "vpc" {
 module "ecs" {
   source = "./terraform/ecs"
 
-  name               = "nestjs_notes_cluster"
+  name               = "nestjs-notes-cluster"
   vpc_id             = module.vpc.vpc_id
+  route53_zone_id    = aws_route53_zone.primary.zone_id
+  domain_name        = local.domain_name
   public_subnets     = module.vpc.public_subnets
   ecr_repository_url = aws_ecr_repository.nestjs_notes_ecr_repo.repository_url
   DATABASE_URI       = var.DATABASE_URI
+}
+
+resource "aws_route53_record" "alb_record" {
+  zone_id = aws_route53_zone.primary.zone_id
+  # If you're creating a record that has the same name as the hosted zone,
+  # don't enter a value (for example, an @ symbol) in the Name field.
+  # https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-basic.html#rrsets-values-basic-name
+  name = ""
+  type = "A"
+
+  alias {
+    name                   = module.ecs.alb_dns_name
+    zone_id                = module.ecs.alb_zone_id
+    evaluate_target_health = false
+  }
 }

@@ -102,6 +102,30 @@ resource "aws_security_group" "http_and_https" {
   }
 }
 
+resource "aws_security_group" "http_from_alb" {
+  name_prefix = "http-from-alb"
+  description = "Allow all HTTP traffic from ALB"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    protocol        = "tcp"
+    from_port       = 80
+    to_port         = 80
+    security_groups = [aws_security_group.http_and_https_alb.id]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "HTTP from ALB"
+  }
+}
+
 # Launch Template (describes EC2 instance)
 data "aws_ssm_parameter" "ecs_node_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
@@ -124,8 +148,7 @@ resource "aws_launch_template" "ecs_ec2" {
   network_interfaces {
     associate_public_ip_address = true
     security_groups = [
-      aws_security_group.ssh.id,
-      aws_security_group.http_and_https.id
+      aws_security_group.http_from_alb.id
     ]
   }
 
@@ -133,7 +156,6 @@ resource "aws_launch_template" "ecs_ec2" {
     device_name = "/dev/sdf"
 
     ebs {
-      # TODO: move to the variable
       volume_size = 8
     }
   }
@@ -288,6 +310,11 @@ data "aws_region" "current" {}
 # At this point, we simply describe from where
 # and how to launch the docker container.
 
+locals {
+  container_name = "${var.name}-container"
+  container_port = 80
+}
+
 resource "aws_ecs_task_definition" "app" {
   family             = var.name
   task_role_arn      = aws_iam_role.ecs_task_role.arn
@@ -312,7 +339,7 @@ resource "aws_ecs_task_definition" "app" {
   memory       = 256
 
   container_definitions = jsonencode([{
-    name  = "${var.name}-container",
+    name  = local.container_name,
     image = "${var.ecr_repository_url}:latest",
     # If the essential parameter of a container is marked as true,
     # and that container fails or stops for any reason,
@@ -321,9 +348,15 @@ resource "aws_ecs_task_definition" "app" {
     # its failure doesn't affect the rest of the containers in a task.
     # If this parameter is omitted, a container is assumed to be essential.
     essential = true,
+
+    environment = [{
+      name  = "PORT"
+      value = "80"
+    }]
+
     portMappings = [{
       hostPort      = 80,
-      containerPort = 3000,
+      containerPort = local.container_port,
     }],
 
     secrets = [{
@@ -340,6 +373,140 @@ resource "aws_ecs_task_definition" "app" {
       }
     },
   }])
+}
+
+# Load Balancer (ALB)
+
+resource "aws_security_group" "http_and_https_alb" {
+  name_prefix = "http-and-https-alb-"
+  description = "Allow all HTTP/HTTPS traffic to ALB from public"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = [80, 443]
+    content {
+      protocol    = "tcp"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_lb" "main" {
+  name               = "alb-for-${var.name}"
+  load_balancer_type = "application"
+  subnets            = var.public_subnets
+  security_groups    = [aws_security_group.http_and_https_alb.id]
+
+  tags = {
+    Name = "alb-for=${var.name}"
+  }
+}
+
+resource "aws_lb_target_group" "app" {
+  name_prefix = substr(var.name, 1, 6)
+  vpc_id      = var.vpc_id
+  # TODO https and redirect from http to https
+  protocol    = "HTTP"
+  port        = 80
+  target_type = "instance"
+
+  health_check {
+    enabled = true
+    path    = "/api/v1/note/all"
+    port    = 80
+    matcher = 200
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Creating SSL Certificates using AWS Certificate Manager
+# https://dev.to/chinmay13/creating-ssl-certificates-using-aws-certificate-manager-with-dns-validation-using-terraform-2km7
+
+
+resource "aws_acm_certificate" "cert" {
+  domain_name               = var.domain_name
+  subject_alternative_names = ["*.${var.domain_name}"]
+
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_route53_record" "cert_validation_record" {
+  for_each = {
+    for dvo in aws_acm_certificate.cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.route53_zone_id
+}
+
+# Once the DNS records are in place,
+# ACM will automatically check the DNS entries.
+# You can use Terraform to wait for the validation to complete.
+# resource "aws_acm_certificate_validation" "cert_validation" {
+#   timeouts {
+#     create = "5m"
+#   }
+#   certificate_arn         = aws_acm_certificate.mycert_acm.arn
+#   validation_record_fqdns = [for record in aws_route53_record.cert_validation_record : record.fqdn]
+# }
+
+resource "aws_lb_listener" "redirect_to_http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = aws_acm_certificate.cert.arn
+
+  depends_on = [aws_acm_certificate.cert]
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+resource "aws_lb_listener_certificate" "my-certificate" {
+  listener_arn    = aws_lb_listener.https.arn
+  certificate_arn = aws_acm_certificate.cert.arn
 }
 
 # Create a security group
@@ -361,13 +528,22 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
 
+
+  depends_on = [aws_lb_target_group.app]
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app.arn
+    container_name   = local.container_name
+    container_port   = local.container_port
+  }
+
   # network_configuration - (Optional)
   # Network configuration for the service.
   # This parameter is required for task definitions that use the awsvpc network mode
   # to receive their own Elastic Network Interface, and it is not supported for other network modes.
   # 
   # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_service.html#network_configuration
-  #
+
   # network_configuration {
   #   security_groups = [aws_security_group.http_and_https.id]
   #   subnets         = var.public_subnets
