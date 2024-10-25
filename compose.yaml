@@ -15,7 +15,7 @@ services:
       - mongo
     build:
       context: .
-      dockerfile: ./Dockerfile
+      dockerfile: ./dev.Dockerfile
     restart: always
     ports:
       - 3000:80
