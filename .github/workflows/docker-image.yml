@@ -33,12 +33,13 @@ jobs:
           )
 
           NEW_TASK_DEFINTIION=$(
-            echo $TASK_DEFINITION | jq '.taskDefinition
-              | del(.taskDefinitionArn)
-              | del(.revision)
-              | del(.status)
-              | del(.requiresAttributes)
-              | del(.compatibilities)'
+            echo $TASK_DEFINITION | jq 'delpaths([
+              ["taskDefinition", "taskDefinitionArn"],
+              ["taskDefinition", "revision"],
+              ["taskDefinition", "status"],
+              ["taskDefinition", "requiresAttributes"],
+              ["taskDefinition", "compatibilities"]
+            ])'
           )
 
           aws ecs register-task-definition --region "$WS_DEFAULT_REGION" --cli-input-json "$NEW_TASK_DEFINITION"
