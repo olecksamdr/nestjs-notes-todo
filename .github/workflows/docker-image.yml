@@ -33,7 +33,8 @@ jobs:
           )
 
           NEW_TASK_DEFINTIION=$(
-            echo $TASK_DEFINITION | jq 'del(.taskDefinitionArn)
+            echo $TASK_DEFINITION | jq '.taskDefinition
+              | del(.taskDefinitionArn)
               | del(.revision)
               | del(.status)
               | del(.requiresAttributes)
