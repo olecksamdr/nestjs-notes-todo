@@ -29,7 +29,9 @@ jobs:
           AWS_DEFAULT_REGION: 'eu-central-1'
           TASK_FAMILY: nestjs-notes-cluster
         run: |
-            echo "task-definition=$(aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION")" >> "$GITHUB_OUTPUT"
+            echo "task-definition<<EOF" >> $GITHUB_OUTPUT
+            aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
