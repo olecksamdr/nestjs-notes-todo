@@ -28,12 +28,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: 'eu-central-1'
           TASK_FAMILY: nestjs-notes-cluster
-        run: |
-            echo "task-definition='$(aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION")'" >> "$GITHUB_OUTPUT"
+        run: TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION")
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          task-definition: ${{ env.TASK_DEFINITION }}
           service: nestjs-notes-cluster-service
           cluster: nestjs-notes-cluster
           wait-for-service-stability: true
