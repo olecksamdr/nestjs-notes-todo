@@ -9,12 +9,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-central-1
       - uses: actions/checkout@v4
       - name: Build and Push the Docker image
         uses: mr-smithers-excellent/docker-build-push@v6
@@ -30,17 +24,13 @@ jobs:
       - name: Download ECS Task Definition
         id: task-definition
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: 'eu-central-1'
           TASK_FAMILY: nestjs-notes-cluster
+          TASK_DEFINITION: ${{ secrets.TASK_DEFINITION }}
         run: |
-            aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION" > task-definition.json
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: task-definition.json
-          service: nestjs-notes-cluster-service
-          cluster: nestjs-notes-cluster
-          wait-for-service-stability: true
+            aws ecs register-task-definition --region "$AWS_DEFAULT_REGION" --cli-input-json "$NEW_TASK_DEFINITION"
 
 
 
