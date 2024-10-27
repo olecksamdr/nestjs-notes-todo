@@ -21,26 +21,22 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URI }}
-      - name: Trigger Deploy of ECS Service
+      - name: Download ECS Task Definition
+        id: task-definition
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: 'eu-central-1'
           TASK_FAMILY: nestjs-notes-cluster
         run: |
-          TASK_DEFINITION=$(
-            aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION"
-          )
+            echo "task-definition='$(aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION")'" >> "$GITHUB_OUTPUT"
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          service: nestjs-notes-cluster-service
+          cluster: nestjs-notes-cluster
+          wait-for-service-stability: true
 
-          NEW_TASK_DEFINTIION=$(
-            echo $TASK_DEFINITION | jq 'delpaths([
-              ["taskDefinition", "taskDefinitionArn"],
-              ["taskDefinition", "revision"],
-              ["taskDefinition", "status"],
-              ["taskDefinition", "requiresAttributes"],
-              ["taskDefinition", "compatibilities"]
-            ])'
-          )
 
-          aws ecs register-task-definition --region "$WS_DEFAULT_REGION" --cli-input-json "$NEW_TASK_DEFINITION"
 
