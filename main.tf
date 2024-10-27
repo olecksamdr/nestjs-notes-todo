@@ -61,7 +61,11 @@ resource "aws_iam_user" "nestjs_notes_ecr_user" {
 data "aws_iam_policy_document" "update_ecs_service_doc" {
   statement {
     effect = "Allow"
-    actions = ["ecs:UpdateService"]
+    actions = [
+      "ecs:UpdateService",
+      "ecs:RegisterTaskDefinition",
+      "ecs:DescribeTaskDefinition"
+    ]
     resources = [
       module.ecs.ecs_service_id
     ]

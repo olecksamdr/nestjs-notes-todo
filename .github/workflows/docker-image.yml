@@ -26,4 +26,20 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: 'eu-central-1'
-        run: aws ecs update-service --cluster nestjs-notes-cluster --service nestjs-notes-cluster-service --force-new-deployment
+          TASK_FAMILY: nestjs-notes-cluster
+        run: |
+          TASK_DEFINITION=$(
+            aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION"
+          )
+
+          NEW_TASK_DEFINTIION=$(
+            echo $TASK_DEFINITION
+              | del(.taskDefinitionArn)
+              | del(.revision)
+              | del(.status)
+              | del(.requiresAttributes)
+              | del(.compatibilities)'
+          )
+
+          aws ecs register-task-definition --region "$WS_DEFAULT_REGION" --cli-input-json "$NEW_TASK_DEFINITION"
+
