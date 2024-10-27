@@ -429,6 +429,8 @@ resource "aws_lb_target_group" "app" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [aws_lb.main]
 }
 
 # Creating SSL Certificates using AWS Certificate Manager
@@ -443,6 +445,7 @@ resource "aws_acm_certificate" "cert" {
 
   lifecycle {
     create_before_destroy = true
+    prevent_destroy       = true
   }
 }
 
@@ -461,6 +464,10 @@ resource "aws_route53_record" "cert_validation_record" {
   ttl             = 60
   type            = each.value.type
   zone_id         = var.route53_zone_id
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Once the DNS records are in place,
@@ -479,6 +486,10 @@ resource "aws_lb_listener" "redirect_to_http" {
   port              = "80"
   protocol          = "HTTP"
 
+  depends_on = [
+    aws_lb.main,
+  ]
+
   default_action {
     type = "redirect"
 
@@ -496,7 +507,10 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   certificate_arn   = aws_acm_certificate.cert.arn
 
-  depends_on = [aws_acm_certificate.cert]
+  depends_on = [
+    aws_lb.main,
+    aws_acm_certificate.cert
+  ]
 
   default_action {
     type             = "forward"
@@ -529,7 +543,15 @@ resource "aws_ecs_service" "app" {
   desired_count   = 1
 
 
-  depends_on = [aws_lb_target_group.app]
+  depends_on = [
+    aws_lb_target_group.app,
+
+    # We need to wait until the target group is attached to the listener
+    # and also the load balancer so we wait until the listener creation
+    # is complete first
+    aws_lb_listener.redirect_to_http,
+    aws_lb_listener.https
+  ]
 
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
