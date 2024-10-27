@@ -23,6 +23,10 @@ locals {
 
 resource "aws_route53_zone" "primary" {
   name = local.domain_name
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_route53_record" "www" {
@@ -37,6 +41,10 @@ resource "aws_route53_record" "www" {
     name                   = local.domain_name
     zone_id                = aws_route53_zone.primary.zone_id
     evaluate_target_health = false
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -61,7 +69,11 @@ resource "aws_iam_user" "nestjs_notes_ecr_user" {
 data "aws_iam_policy_document" "update_ecs_service_doc" {
   statement {
     effect = "Allow"
-    actions = ["ecs:UpdateService"]
+    actions = [
+      "ecs:UpdateService",
+      "ecs:RegisterTaskDefinition",
+      "ecs:DescribeTaskDefinition"
+    ]
     resources = [
       module.ecs.ecs_service_id
     ]
