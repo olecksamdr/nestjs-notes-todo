@@ -70,6 +70,8 @@ data "aws_iam_policy_document" "deploy_to_ecs_service_doc" {
   statement {
     effect = "Allow"
     actions = [
+      "iam:PassRole",
+      "ecs:TagResource",
       "ecs:RegisterTaskDefinition",
       "ecs:DescribeTaskDefinition"
     ]
