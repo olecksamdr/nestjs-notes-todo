@@ -72,6 +72,7 @@ data "aws_iam_policy_document" "deploy_to_ecs_service_doc" {
     actions = [
       "iam:PassRole",
       "ecs:TagResource",
+      "ecs:UpdateService",
       "ecs:RegisterTaskDefinition",
       "ecs:DescribeTaskDefinition"
     ]

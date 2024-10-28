@@ -30,7 +30,7 @@ jobs:
           TASK_FAMILY: nestjs-notes-cluster
           TASK_DEFINITION: ${{ secrets.TASK_DEFINITION }}
         run: |
-            aws ecs register-task-definition --region "$AWS_DEFAULT_REGION" --cli-input-json "$TASK_DEFINITION"
+            # aws ecs register-task-definition --region "$AWS_DEFAULT_REGION" --cli-input-json "$TASK_DEFINITION"
             aws ecs update-service --cluster nestjs-notes-cluster --service nestjs-notes-cluster-service --force-new-deployment
 
 
